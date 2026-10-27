@@ -206,6 +206,7 @@ void vkp_framegen_session_begin(void) {
     if (g_engine_ok) fge_stop();
     g_engine_ok = 0; g_engine_kind = -1;
     g_built_w = g_built_h = 0; g_built_fmt = VK_FORMAT_UNDEFINED;
+    g_refused_n = 0; /* a format refused in one session is tried again in the next */
     g_generating_logged = 0;
     g_was_armed = 0;
     atomic_store(&g_cfg_dirty, 1);

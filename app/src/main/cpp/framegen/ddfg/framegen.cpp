@@ -164,6 +164,8 @@ static VkExtent2D levelExtent(VkExtent2D e, int l) {
     return { e.width >> l ? e.width >> l : 1u, e.height >> l ? e.height >> l : 1u };
 }
 
+static void destroyScratch(const DeviceDispatch* dd, VkDevice dev, VkDescriptorPool pool); /* record_impl.inc */
+
 bool FrameGen::onResize(VkExtent2D extent, VkFormat  , bool force) {
 
 
@@ -171,6 +173,9 @@ bool FrameGen::onResize(VkExtent2D extent, VkFormat  , bool force) {
     /* Mali (G77 r32p1, Retroid Pocket 4 Pro) faulted inside the driver when these images, and the
      * descriptor sets naming them, went away under a frame still in flight: wait first. */
     if (ready_ && dd_ && dd_->DeviceWaitIdle) dd_->DeviceWaitIdle(device_);
+    /* The scratch sets name the views destroyed below, and its pool only ever grows: drop it here, not
+     * just at destroy(), or a return to a former size can reuse sets bound to freed views. */
+    if (ready_) destroyScratch(dd_, device_, descPool_);
     for (auto& i : pyrA_) destroyImage(i); pyrA_.clear();
     for (auto& i : pyrB_) destroyImage(i); pyrB_.clear();
     for (auto& i : pyrAs_) destroyImage(i); pyrAs_.clear();
@@ -215,7 +220,6 @@ void FrameGen::barrier(VkCommandBuffer cmd, VkImage img, VkImageLayout from, VkI
 }
 
 
-static void destroyScratch(const DeviceDispatch* dd, VkDevice dev, VkDescriptorPool pool); /* record_impl.inc */
 
 void FrameGen::destroy() {
     if (!device_) return;
