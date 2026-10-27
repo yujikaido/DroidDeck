@@ -3178,10 +3178,10 @@ static void send_axis(struct seat_pointer *sp, uint32_t t, uint32_t axis, int va
     wl_pointer_send_axis(sp->ptr, t, axis, wl_fixed_from_double(value120 / 12.0));
 }
 
-static void axis_event(int vertical120, int horizontal120) {
+static void axis_event(int vertical120, int horizontal120, int finger) {
     struct surface *target = g_active_constraint ? g_active_constraint->surface
                            : g_desktop ? g_desktop : (g_grab ? g_grab : toplevel_at(g_ptr_x, g_ptr_y));
-    if (!target || (!vertical120 && !horizontal120)) return;
+    if (!target || (!finger && !vertical120 && !horizontal120)) return;
     struct wl_client *client = wl_resource_get_client(target->resource);
     struct seat_pointer *sp;
     if (!pointer_for(client)) return;
@@ -3190,16 +3190,33 @@ static void axis_event(int vertical120, int horizontal120) {
     uint32_t t = now_ms();
     pointer_focus(target->resource, wl_fixed_from_double(g_ptr_x - tx), wl_fixed_from_double(g_ptr_y - ty));
     for_each_pointer_of(client, sp) {
-        send_axis(sp, t, WL_POINTER_AXIS_VERTICAL_SCROLL, vertical120);
-        send_axis(sp, t, WL_POINTER_AXIS_HORIZONTAL_SCROLL, horizontal120);
-        if (wl_resource_get_version(sp->ptr) >= WL_POINTER_FRAME_SINCE_VERSION)
+        int version = wl_resource_get_version(sp->ptr);
+        if (!finger) {
+            send_axis(sp, t, WL_POINTER_AXIS_VERTICAL_SCROLL, vertical120);
+            send_axis(sp, t, WL_POINTER_AXIS_HORIZONTAL_SCROLL, horizontal120);
+        } else {
+            if (version >= WL_POINTER_AXIS_SOURCE_SINCE_VERSION)
+                wl_pointer_send_axis_source(sp->ptr, WL_POINTER_AXIS_SOURCE_FINGER);
+            if (!vertical120 && !horizontal120) {
+                if (version >= WL_POINTER_AXIS_STOP_SINCE_VERSION) {
+                    wl_pointer_send_axis_stop(sp->ptr, t, WL_POINTER_AXIS_VERTICAL_SCROLL);
+                    wl_pointer_send_axis_stop(sp->ptr, t, WL_POINTER_AXIS_HORIZONTAL_SCROLL);
+                }
+            } else {
+                if (vertical120)
+                    wl_pointer_send_axis(sp->ptr, t, WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_double(vertical120 / 12.0));
+                if (horizontal120)
+                    wl_pointer_send_axis(sp->ptr, t, WL_POINTER_AXIS_HORIZONTAL_SCROLL, wl_fixed_from_double(horizontal120 / 12.0));
+            }
+        }
+        if (version >= WL_POINTER_FRAME_SINCE_VERSION)
             wl_pointer_send_frame(sp->ptr);
     }
     wl_display_flush_clients(g_display);
 }
 
 static void scroll_event(int steps) {
-    axis_event(steps * 120, 0);
+    axis_event(steps * 120, 0, 0);
 }
 
 static int update_modifiers(uint32_t evdev, int pressed) {
@@ -3295,7 +3312,8 @@ static int on_input_readable(int fd, uint32_t mask, void *data) {
             schedule_render();
             break;
         case 10: break;
-        case 11: axis_event(m.p1, m.p2); break;
+        case 11: axis_event(m.p1, m.p2, 0); break;
+        case 12: axis_event(m.p1, m.p2, 1); break;
         case 20: stream_take(); break;
         case 21: if (!m.p1) stream_forget_all(); schedule_render(); break;
         default: deliver_pointer(&m); break;

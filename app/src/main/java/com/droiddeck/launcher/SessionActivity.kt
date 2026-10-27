@@ -600,12 +600,28 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     scrollRestX = 0f
                     scrollRestY = 0f
                 }
+                override fun replay(event: MotionEvent) {
+                    drawnRect()?.let { forwardTouch(event, it) }
+                }
                 override fun rightClick(x: Float, y: Float) {
                     pointerListener.onLongPress()
                     pointerListener.onButton(PointerGestures.BTN_RIGHT, true, x, y)
                     surfaceView.postDelayed({ pointerListener.onButton(PointerGestures.BTN_RIGHT, false, x, y) }, 50L)
                 }
-                override fun scroll(dx: Float, dy: Float) = scrollListener.onScroll(dx, dy)
+                override fun scrollStart(x: Float, y: Float) = scrollListener.onMove(x, y)
+                override fun scroll(dx: Float, dy: Float) {
+                    val rect = drawnRect() ?: return
+                    val out = SessionState.outputSize
+                    scrollRestX += dx * out.first / rect.width() * AXIS_UNITS_PER_PIXEL
+                    scrollRestY += dy * out.second / rect.height() * AXIS_UNITS_PER_PIXEL
+                    val h = scrollRestX.toInt()
+                    val v = scrollRestY.toInt()
+                    if (h == 0 && v == 0) return
+                    scrollRestX -= h
+                    scrollRestY -= v
+                    WaylandCompositor.nativeSendSceneInput(12, v, h)
+                }
+                override fun scrollEnd() = WaylandCompositor.nativeSendSceneInput(12, 0, 0)
             })
         touchscreenGestures = TouchscreenGestures(
             ViewConfiguration.get(this).scaledTouchSlop.toFloat(), gestureOutput,
@@ -2897,6 +2913,10 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             return true
         }
         if (SessionState.mode == SessionService.MODE_DESKTOP && twoFingerGestures.onTouch(event)) return true
+        return forwardTouch(event, rect)
+    }
+
+    private fun forwardTouch(event: MotionEvent, rect: android.graphics.RectF): Boolean {
         if (directTouchHold.onTouch(event)) return true
         fun sendTouch(action: Int, index: Int) {
             val x = event.getX(index).coerceIn(rect.left, rect.right)
@@ -3867,6 +3887,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val PAD_MOUSE_CHECK_MS = 500L
         private const val PAD_SCROLL_POINTER_X = 0.985f
         private const val PAD_SCROLL_HEIGHTS_PER_S = 3f
+        private const val AXIS_UNITS_PER_PIXEL = 12f
         private const val DRAWER_HAT_THRESHOLD = 0.5f
         private const val DRAWER_STICK_ENTER_THRESHOLD = 0.55f
         private const val DRAWER_STICK_EXIT_THRESHOLD = 0.35f

@@ -42,6 +42,8 @@ At run time the desktop is started by `tools/linuxfs/desktop/droiddeck-desktop` 
 at every session): Plasma's own `startplasma-wayland`, with KWin nested in the app's compositor
 through `kwin_wayland_wrapper`. The package's `kwin-compositor` marker selects OpenGL through
 Zink for KWin 6.8, which removed QPainter. Older packages retain their software compositor.
+KWin runs without Gallium's threaded context and without overlay layers. With the threaded context, KWin crashed
+uploading windows' shared-memory buffers by reading past their end, and the host shows only a single buffer.
 On Android the launcher explicitly selects the KGSL render node; the nested backend can use it
 when the host's dmabuf feedback cannot name a DRM device. Games and emulators from the menu go
 through `droiddeck-gpu`, and Steam goes back to the app as a Steam session.
@@ -57,6 +59,9 @@ The behavior is enabled only with `DROIDDECK_NESTED_SCALE`, which the desktop sc
 `0002-select-explicit-nested-render-node.patch` lets that nested backend use one explicitly
 selected `KWIN_RENDER_NODES` device when host feedback cannot identify it. It does not guess
 between GPUs or change normal KWin device selection.
+`0003-forward-nested-scroll-source.patch` passes the host's scroll source, wheel steps and scroll stops
+through the nested backend, which upstream leaves as a TODO. Two-finger touch scrolling then reaches
+apps as touchpad scrolling, and wheel steps stay whole clicks.
 
 `pins/mesa/desc` keeps Mesa 26.2.4 and its actual package dependencies ahead of the rolling
 repository metadata. Mesa 26.2.5 crashes in Zink shader compilation on Thor with the selected

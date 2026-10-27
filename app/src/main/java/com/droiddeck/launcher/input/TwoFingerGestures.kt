@@ -9,31 +9,41 @@ import kotlin.math.hypot
 class TwoFingerGestures(private val slopPx: Float, private val listener: Listener) {
     interface Listener {
         fun cancelTouch()
+        fun replay(event: MotionEvent)
         fun rightClick(x: Float, y: Float)
+        fun scrollStart(x: Float, y: Float)
         fun scroll(dx: Float, dy: Float)
+        fun scrollEnd()
     }
 
-    private enum class State { IDLE, CANDIDATE, TAPPED, HELD, SCROLLING, PASSING }
+    private enum class State { IDLE, PENDING, CANDIDATE, TAPPED, HELD, SCROLLING, PASSING }
 
     private val handler = Handler(Looper.getMainLooper())
     private var state = State.IDLE
     private var x = 0f
     private var y = 0f
-    private var downAt = 0L
     private var twoAt = 0L
     private var startSpan = 0f
     private var lastX = 0f
     private var lastY = 0f
     private val starts = HashMap<Int, Pair<Float, Float>>()
+    private val held = ArrayList<MotionEvent>()
     private val hold = Runnable {
         if (state != State.CANDIDATE) return@Runnable
         state = State.HELD
+        drop()
         listener.cancelTouch()
         listener.rightClick(x, y)
     }
+    private val release = Runnable {
+        if (state == State.PENDING) pass(State.IDLE)
+    }
 
     fun cancel() {
+        if (state == State.SCROLLING) listener.scrollEnd()
         handler.removeCallbacks(hold)
+        handler.removeCallbacks(release)
+        drop()
         state = State.IDLE
     }
 
@@ -42,39 +52,65 @@ class TwoFingerGestures(private val slopPx: Float, private val listener: Listene
             MotionEvent.ACTION_DOWN -> {
                 cancel()
                 starts.clear()
-                downAt = event.eventTime
                 x = event.x
                 y = event.y
                 note(event, event.actionIndex)
+                state = State.PENDING
+                keep(event)
+                handler.postDelayed(release, LAND_MS)
+                return true
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 note(event, event.actionIndex)
-                if (state == State.IDLE && event.pointerCount == 2 && event.eventTime - downAt < LAND_MS) {
-                    state = State.CANDIDATE
-                    twoAt = event.eventTime
-                    startSpan = span(event)
-                    lastX = midX(event)
-                    lastY = midY(event)
-                    handler.postDelayed(hold, HOLD_MS)
-                } else if (state == State.CANDIDATE) {
-                    handler.removeCallbacks(hold)
-                    state = State.PASSING
-                } else if (state == State.SCROLLING || state == State.HELD || state == State.TAPPED) {
-                    return true
+                when (state) {
+                    State.PENDING -> {
+                        handler.removeCallbacks(release)
+                        keep(event)
+                        if (event.pointerCount != 2) {
+                            pass(State.PASSING)
+                            return true
+                        }
+                        state = State.CANDIDATE
+                        twoAt = event.eventTime
+                        startSpan = span(event)
+                        lastX = midX(event)
+                        lastY = midY(event)
+                        handler.postDelayed(hold, HOLD_MS)
+                        return true
+                    }
+                    State.CANDIDATE -> {
+                        keep(event)
+                        pass(State.PASSING)
+                        return true
+                    }
+                    State.SCROLLING, State.HELD, State.TAPPED -> return true
+                    else -> Unit
                 }
             }
             MotionEvent.ACTION_MOVE -> when (state) {
-                State.CANDIDATE -> if (event.pointerCount == 2 && moved(event)) {
-                    handler.removeCallbacks(hold)
-                    if (abs(span(event) - startSpan) > slopPx * 2) {
-                        state = State.PASSING
-                    } else {
+                State.PENDING -> {
+                    keep(event)
+                    if (moved(event)) pass(State.IDLE)
+                    return true
+                }
+                State.CANDIDATE -> {
+                    if (event.pointerCount == 2 && moved(event)) {
+                        handler.removeCallbacks(hold)
+                        if (abs(span(event) - startSpan) > slopPx * 2) {
+                            keep(event)
+                            pass(State.PASSING)
+                            return true
+                        }
                         state = State.SCROLLING
+                        drop()
                         listener.cancelTouch()
                         lastX = midX(event)
                         lastY = midY(event)
+                        listener.scrollStart(lastX, lastY)
                         return true
                     }
+                    keep(event)
+                    return true
                 }
                 State.SCROLLING -> {
                     if (event.pointerCount >= 2) {
@@ -92,17 +128,25 @@ class TwoFingerGestures(private val slopPx: Float, private val listener: Listene
             MotionEvent.ACTION_POINTER_UP -> when (state) {
                 State.CANDIDATE -> {
                     handler.removeCallbacks(hold)
+                    keep(event)
                     if (event.eventTime - twoAt < TAP_MS) {
                         state = State.TAPPED
+                        drop()
                         return true
                     }
-                    state = State.PASSING
+                    pass(State.PASSING)
+                    return true
                 }
                 State.SCROLLING, State.HELD, State.TAPPED -> return true
                 else -> Unit
             }
             MotionEvent.ACTION_UP -> {
                 val was = state
+                if (was == State.PENDING) {
+                    keep(event)
+                    pass(State.IDLE)
+                    return true
+                }
                 cancel()
                 when (was) {
                     State.TAPPED -> {
@@ -117,6 +161,27 @@ class TwoFingerGestures(private val slopPx: Float, private val listener: Listene
             MotionEvent.ACTION_CANCEL -> cancel()
         }
         return false
+    }
+
+    private fun keep(event: MotionEvent) {
+        held += MotionEvent.obtain(event)
+    }
+
+    private fun drop() {
+        held.forEach { it.recycle() }
+        held.clear()
+    }
+
+    private fun pass(next: State) {
+        handler.removeCallbacks(release)
+        handler.removeCallbacks(hold)
+        state = next
+        val events = held.toList()
+        held.clear()
+        events.forEach {
+            listener.replay(it)
+            it.recycle()
+        }
     }
 
     private fun note(event: MotionEvent, index: Int) {

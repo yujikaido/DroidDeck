@@ -11,6 +11,7 @@ export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_RDD_S
 export MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1 MOZ_DISABLE_UTILITY_SANDBOX=1
 export MOZ_SHM_NO_SEALS=1
 export KWIN_COMPOSE=Q QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+export KWIN_USE_OVERLAYS=0
 [ -e /etc/mpv/mpv.conf ] || { mkdir -p /etc/mpv && echo gpu-sw=yes >/etc/mpv/mpv.conf; } 2>/dev/null
 for conf in client client-rt; do
   mkdir -p "/etc/pipewire/$conf.conf.d" && printf 'context.properties = {\n    module.rt = false\n}\n' >"/etc/pipewire/$conf.conf.d/droiddeck-rt.conf"
@@ -82,6 +83,10 @@ if [ "$(cat /usr/share/droiddeck/kwin-compositor 2>/dev/null)" = opengl ]; then
   if [ -z "${KWIN_RENDER_NODES:-}" ] && [ -c /dev/dri/renderD0 ]; then
     export KWIN_RENDER_NODES=/dev/dri/renderD0
   fi
+  mkdir -p /run/droiddeck/kwin
+  printf '#!/bin/sh\nGALLIUM_THREAD=0 exec /usr/bin/kwin_wayland "$@"\n' > /run/droiddeck/kwin/kwin_wayland
+  chmod 755 /run/droiddeck/kwin/kwin_wayland
+  export PATH=/run/droiddeck/kwin:$PATH
 fi
 echo "== droiddeck-desktop: Plasma on $WAYLAND_DISPLAY"
 dbus-run-session -- startplasma-wayland
