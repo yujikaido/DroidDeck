@@ -198,6 +198,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var watching = true
     private lateinit var touchpad: TouchpadGestures
     private lateinit var directTouchHold: DirectTouchHold
+    private lateinit var twoFingerTap: com.droiddeck.launcher.input.TwoFingerTap
     private lateinit var threeFingerTap: com.droiddeck.launcher.input.ThreeFingerTap
     private lateinit var touchscreenGestures: TouchscreenGestures
     private var gestureConfig = com.droiddeck.launcher.input.TouchGestureConfig()
@@ -591,6 +592,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
         }
         threeFingerTap = com.droiddeck.launcher.input.ThreeFingerTap(PointerGestures.slop(this) * 2)
+        twoFingerTap = com.droiddeck.launcher.input.TwoFingerTap(PointerGestures.slop(this) * 2)
         touchscreenGestures = TouchscreenGestures(
             ViewConfiguration.get(this).scaledTouchSlop.toFloat(), gestureOutput,
         )
@@ -2877,6 +2879,25 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                 WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
             if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) ignoreGameTouch = false
             return true
+        }
+        if (SessionState.mode == SessionService.MODE_DESKTOP) {
+            when (twoFingerTap.onTouch(event)) {
+                com.droiddeck.launcher.input.TwoFingerTap.Result.SWALLOW -> return true
+                com.droiddeck.launcher.input.TwoFingerTap.Result.CANCEL -> {
+                    WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
+                    return true
+                }
+                com.droiddeck.launcher.input.TwoFingerTap.Result.TAP -> {
+                    WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
+                    directTouchHold.cancel()
+                    val tapX = twoFingerTap.x
+                    val tapY = twoFingerTap.y
+                    pointerListener.onButton(PointerGestures.BTN_RIGHT, true, tapX, tapY)
+                    surfaceView.postDelayed({ pointerListener.onButton(PointerGestures.BTN_RIGHT, false, tapX, tapY) }, 50L)
+                    return true
+                }
+                com.droiddeck.launcher.input.TwoFingerTap.Result.PASS -> Unit
+            }
         }
         if (directTouchHold.onTouch(event)) return true
         fun sendTouch(action: Int, index: Int) {

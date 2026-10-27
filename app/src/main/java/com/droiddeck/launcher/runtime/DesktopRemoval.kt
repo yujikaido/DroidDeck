@@ -50,12 +50,14 @@ internal object DesktopRemoval {
         check(version in versions && (installing == null || installing.version in versions)) { context.getString(R.string.desktop_removal_unknown) }
         val entries = lines(context, "kde-remove.tsv.gzip").map(DesktopFileRemoval.Entry::parse)
         val keep = protected(context, root)
+        val records = DesktopFileRemoval.desktopRecords(root)
         cleanLegacy(context, listener)
         FileUtils.writeString(pending, version!!)
         check(FileUtils.readString(pending)?.trim() == version) { "Could not reserve desktop removal" }
         if (marker.exists() && !marker.delete()) error("Could not clear desktop marker")
         val removing = context.getString(R.string.desktop_removing)
         val result = DesktopFileRemoval.remove(root, entries, keep) { listener.onProgress(removing, it) }
+        DesktopFileRemoval.removeRecords(root, records)
         for ((asset, path) in com.droiddeck.launcher.session.SessionFiles.DESKTOP_FILES) {
             val target = DesktopFileRemoval.safeFile(root, path) ?: continue
             if (!isRegularFile(target)) continue

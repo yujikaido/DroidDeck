@@ -1,0 +1,20 @@
+#!/bin/bash
+dir=/usr/share/droiddeck/pacman
+[ -r "$dir/pacman.conf" ] || exec /usr/bin/pacman "$@"
+"$dir/prepare" || exit 1
+if [ "$(id -u)" = 0 ]; then
+  letters= install=1
+  for arg in "$@"; do
+    case $arg in
+      --) break ;;
+      --sync) letters+=S ;;
+      --search|--info|--clean|--groups|--list|--print|--print-format|--downloadonly|--needed) install=0 ;;
+      --*) ;;
+      -*) letters+=${arg#-} ;;
+    esac
+  done
+  case $letters in *S*) ;; *) install=0 ;; esac
+  case $letters in *[sicglpw]*) install=0 ;; esac
+  [ "$install" = 1 ] && set -- --needed "$@"
+fi
+exec /usr/bin/pacman --config "$dir/pacman.conf" "$@"

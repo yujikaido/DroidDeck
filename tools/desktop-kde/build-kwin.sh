@@ -6,7 +6,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 source "$here/kwin.env"
 source "$here/mesa.env"
 version=$DESKTOP_KWIN_VERSION
-source_sha=4bfaf31e29a8f9fdf231dc3bbb9b09b0ce07cae9fee7a01cfc86425ece796258
+source_sha=f3d725f81061c1ba97fdef8aeb2101a5c5e03c77f11e9a2abaa1dfed4489d3b6
 mirror=https://fl.us.mirror.archlinuxarm.org/aarch64
 builder=68B3537F39A313B3E574D06777193F152BDBE6A6
 work=$(mktemp -d)
