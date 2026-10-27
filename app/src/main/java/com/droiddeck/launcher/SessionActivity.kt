@@ -198,7 +198,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private var watching = true
     private lateinit var touchpad: TouchpadGestures
     private lateinit var directTouchHold: DirectTouchHold
-    private lateinit var twoFingerTap: com.droiddeck.launcher.input.TwoFingerTap
+    private lateinit var twoFingerGestures: com.droiddeck.launcher.input.TwoFingerGestures
     private lateinit var threeFingerTap: com.droiddeck.launcher.input.ThreeFingerTap
     private lateinit var touchscreenGestures: TouchscreenGestures
     private var gestureConfig = com.droiddeck.launcher.input.TouchGestureConfig()
@@ -592,7 +592,21 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
         }
         threeFingerTap = com.droiddeck.launcher.input.ThreeFingerTap(PointerGestures.slop(this) * 2)
-        twoFingerTap = com.droiddeck.launcher.input.TwoFingerTap(PointerGestures.slop(this) * 2)
+        twoFingerGestures = com.droiddeck.launcher.input.TwoFingerGestures(PointerGestures.slop(this) * 2,
+            object : com.droiddeck.launcher.input.TwoFingerGestures.Listener {
+                override fun cancelTouch() {
+                    WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
+                    directTouchHold.cancel()
+                    scrollRestX = 0f
+                    scrollRestY = 0f
+                }
+                override fun rightClick(x: Float, y: Float) {
+                    pointerListener.onLongPress()
+                    pointerListener.onButton(PointerGestures.BTN_RIGHT, true, x, y)
+                    surfaceView.postDelayed({ pointerListener.onButton(PointerGestures.BTN_RIGHT, false, x, y) }, 50L)
+                }
+                override fun scroll(dx: Float, dy: Float) = scrollListener.onScroll(dx, dy)
+            })
         touchscreenGestures = TouchscreenGestures(
             ViewConfiguration.get(this).scaledTouchSlop.toFloat(), gestureOutput,
         )
@@ -1636,6 +1650,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (touchMode != nextTouchMode) {
             if (::touchpad.isInitialized) touchpad.cancel()
             if (::directTouchHold.isInitialized) directTouchHold.cancel()
+            if (::twoFingerGestures.isInitialized) twoFingerGestures.cancel()
             if (::scrollTouch.isInitialized) scrollTouch.cancel()
             if (CompositorHost.isStarted) {
                 WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
@@ -2807,6 +2822,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         gesturePointerReady = false
         if (::touchpad.isInitialized) touchpad.cancel()
         if (::directTouchHold.isInitialized) directTouchHold.cancel()
+        if (::twoFingerGestures.isInitialized) twoFingerGestures.cancel()
         if (::scrollTouch.isInitialized) scrollTouch.cancel()
         if (CompositorHost.isStarted) WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
         if (next == SessionPrefs.TOUCH_OFF) cursorVisible = false
@@ -2880,25 +2896,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) ignoreGameTouch = false
             return true
         }
-        if (SessionState.mode == SessionService.MODE_DESKTOP) {
-            when (twoFingerTap.onTouch(event)) {
-                com.droiddeck.launcher.input.TwoFingerTap.Result.SWALLOW -> return true
-                com.droiddeck.launcher.input.TwoFingerTap.Result.CANCEL -> {
-                    WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
-                    return true
-                }
-                com.droiddeck.launcher.input.TwoFingerTap.Result.TAP -> {
-                    WaylandCompositor.nativeSendTouch(3, -1, 0, 0)
-                    directTouchHold.cancel()
-                    val tapX = twoFingerTap.x
-                    val tapY = twoFingerTap.y
-                    pointerListener.onButton(PointerGestures.BTN_RIGHT, true, tapX, tapY)
-                    surfaceView.postDelayed({ pointerListener.onButton(PointerGestures.BTN_RIGHT, false, tapX, tapY) }, 50L)
-                    return true
-                }
-                com.droiddeck.launcher.input.TwoFingerTap.Result.PASS -> Unit
-            }
-        }
+        if (SessionState.mode == SessionService.MODE_DESKTOP && twoFingerGestures.onTouch(event)) return true
         if (directTouchHold.onTouch(event)) return true
         fun sendTouch(action: Int, index: Int) {
             val x = event.getX(index).coerceIn(rect.left, rect.right)
@@ -3185,6 +3183,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             touchpad.cancel()
             scrollTouch.cancel()
             directTouchHold.cancel()
+            twoFingerGestures.cancel()
             guestKeysDown.toList().forEach { sendGuestKey(it, false) }
             keyboard?.hide()
             sessionClipboard.stop()
@@ -3337,6 +3336,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (::touchscreenGestures.isInitialized) touchscreenGestures.cancel()
         if (::touchpad.isInitialized) touchpad.cancel()
         if (::directTouchHold.isInitialized) directTouchHold.cancel()
+        if (::twoFingerGestures.isInitialized) twoFingerGestures.cancel()
         uiHandler.removeCallbacks(clearRecognizedGesture)
         gestureSettingsOpen = false
         drawerOpen = false

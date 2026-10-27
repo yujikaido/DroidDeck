@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import base64
-import gzip
 import hashlib
 import io
 import os
@@ -66,19 +65,6 @@ def package_members(path):
     return tarfile.open(path)
 
 
-def mtree_md5(raw):
-    sums = {}
-    for line in gzip.decompress(raw).decode("utf-8", "replace").splitlines():
-        if not line.startswith("./"):
-            continue
-        parts = line.split()
-        path = re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), parts[0][2:])
-        for part in parts[1:]:
-            if part.startswith("md5digest="):
-                sums[path] = part.split("=", 1)[1]
-    return sums
-
-
 def local_record(path, installed):
     with package_members(path) as tar:
         info, mtree, install, files = None, None, None, []
@@ -113,7 +99,13 @@ def local_record(path, installed):
             entry = "/".join(parts[:i]) + "/"
             if entry not in files:
                 files.append(entry)
-    sums = mtree_md5(mtree)
+    sums = {}
+    if backup:
+        with package_members(path) as tar:
+            for member in tar:
+                name = member.name.removeprefix("./")
+                if name in backup and member.isfile():
+                    sums[name] = hashlib.md5(tar.extractfile(member).read()).hexdigest()
     listing = "%FILES%\n" + "".join(f + "\n" for f in sorted(set(files)))
     if backup:
         listing += "\n%BACKUP%\n" + "".join(f"{b}\t{sums.get(b, '')}\n" for b in backup)
