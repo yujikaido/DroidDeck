@@ -3887,7 +3887,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         private const val PAD_MOUSE_CHECK_MS = 500L
         private const val PAD_SCROLL_POINTER_X = 0.985f
         private const val PAD_SCROLL_HEIGHTS_PER_S = 3f
-        private const val AXIS_UNITS_PER_PIXEL = 12f
+        private const val AXIS_UNITS_PER_PIXEL = 3f
         private const val DRAWER_HAT_THRESHOLD = 0.5f
         private const val DRAWER_STICK_ENTER_THRESHOLD = 0.55f
         private const val DRAWER_STICK_EXIT_THRESHOLD = 0.35f
